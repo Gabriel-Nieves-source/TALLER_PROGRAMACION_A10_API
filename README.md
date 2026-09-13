@@ -1,176 +1,69 @@
-PI REST de Productos
+API de Gestión de Productos
 
-Descripción
+API REST desarrollada con FastAPI para la administración de productos, implementada como parte del taller de Programación (Guía 4 – Observabilidad y DevOps inteligente con IA). 
+Incluye operaciones CRUD completas, validaciones con Pydantic, y un sistema de observabilidad basado en logs y métricas.
 
-API REST desarrollada con Python y FastAPI para administrar productos
-mediante los métodos HTTP GET, POST, PUT y DELETE.
-
-El proyecto incluye validación de datos con Pydantic, manejo de errores,
-documentación automática con Swagger UI y un mecanismo básico de
-observabilidad mediante logs y métricas.
-
-Tecnologías
-
-Python 3.11
-
-FastAPI
-
-Uvicorn
-
-Pydantic
-
-Swagger UI
-
-Git y GitHub
-
+Tecnologías utilizadas
+Python 3.13
+FastAPI – framework para la construcción de la API.
+Uvicorn – servidor ASGI que ejecuta la aplicación.
+Pydantic – validación de datos y definición de esquemas.
+Swagger UI / OpenAPI – documentación interactiva generada automáticamente por FastAPI.
+logging (Python) – registro de eventos, errores y operaciones.
 Estructura del proyecto
-
-API_guia/
-├── .venv/
-├── main.py
-└── requirements.txt
-
-main.py contiene la implementación de la API y requirements.txt
-contiene sus dependencias.
-
-Recurso Producto
-
-Campo       Tipo      Validación
-
-id          Entero    Identificador único
-nombre      Texto     Mínimo 2 caracteres
-categoria   Texto     Mínimo 2 caracteres
-precio      Decimal   Mayor que 0
-stock       Entero    Mayor o igual que 0
-
-Los productos se almacenan temporalmente en una lista de diccionarios en
-memoria. No se utiliza una base de datos en esta versión.
-
-Endpoints
-
-Método   Endpoint                     Función
-
-GET      /productos                 Obtener todos los productos
-POST     /productos                 Registrar un producto
-GET      /productos/{producto_id}   Obtener un producto por ID
-PUT      /productos/{producto_id}   Actualizar un producto
-DELETE   /productos/{producto_id}   Eliminar un producto
-GET      /metricas                  Consultar métricas
-GET      /                          Verificar que la API funciona
-
-Validaciones
-
-nombre: mínimo 2 caracteres.
-
-categoria: mínimo 2 caracteres.
-
-precio: mayor que 0.
-
-stock: mayor o igual que 0.
-
-Los productos inexistentes generan HTTP 404.
-
-Los datos inválidos generan HTTP 422.
-
-Los nuevos IDs se generan tomando como referencia el ID más alto
-existente para evitar duplicados.
-
+.
+├── main.py              # Código principal de la API
+├── requirements.txt     # Dependencias del proyecto
+├── app.log              # Archivo de logs generado en tiempo de ejecución
+└── README.md
+Funcionalidades principales
+Método	Endpoint	Descripción
+GET	/	Verifica que la API esté funcionando
+GET	/productos	Consulta todos los productos
+GET	/productos/{id}	Consulta un producto por ID
+POST	/productos	Registra un nuevo producto
+PUT	/productos/{id}	Actualiza un producto existente
+DELETE	/productos/{id}	Elimina un producto
+GET	/metricas	Consulta las métricas de la API
+Modelo de datos: Producto
+Campo	Tipo	Validación
+nombre	string	mínimo 2 caracteres
+categoria	string	mínimo 2 caracteres
+precio	float	mayor que 0
+stock	int	mayor o igual a 0
 Observabilidad
 
-La API utiliza el módulo logging de Python para registrar:
+La API implementa un middleware que registra automáticamente el inicio, fin, éxito y error de cada petición HTTP, junto con el tiempo de respuesta. 
+Los eventos se guardan tanto en consola como en el archivo app.log, con el siguiente formato:
 
-Fecha y hora.
+2026-09-13 10:15:32 | INFO | INICIO PETICIÓN | GET /productos | Petición recibida
+2026-09-13 10:15:32 | INFO | ÉXITO PETICIÓN | GET /productos | Operación exitosa | HTTP 200
 
-Tipo de evento.
+El endpoint /metricas expone en tiempo real:
 
-Peticiones recibidas.
-
-Inicio de operaciones.
-
-Operaciones exitosas.
-
-Errores.
-
-Finalización de operaciones.
-
-Tiempo de respuesta.
-
-El endpoint GET /metricas muestra:
-
-Total de peticiones.
-
-Peticiones exitosas.
-
-Peticiones con error.
-
-Tiempo promedio de respuesta.
-
-Productos registrados.
-
-Cantidad de peticiones GET, POST, PUT y DELETE.
-
-Instalación
-
-Crear el entorno virtual:
-
-python -m venv .venv
-
-Activarlo en Windows PowerShell:
-
-.venv\Scripts\Activate.ps1
-
+Total de peticiones recibidas
+Peticiones exitosas y fallidas
+Tiempo promedio de respuesta
+Número de productos registrados   
+Peticiones por método HTTP (GET, POST, PUT, DELETE)
+Instalación y ejecución
+Clonar el repositorio:
+bash
+   git clone https://github.com/Gabriel-Nieves-source/TALLER_PROGRAMACION_A10.git
+   cd TALLER_PROGRAMACION_A10
+Crear y activar el entorno virtual:
+bash
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1      # Windows (PowerShell)
+   source .venv/bin/activate       # Linux / macOS
 Instalar las dependencias:
-
-pip install -r requirements.txt
-
-Ejecución
-
-Iniciar la API con:
-
-uvicorn main:app --reload
-
-La API estará disponible en:
-
-http://127.0.0.1:8000
-
-Swagger UI
-
-La documentación interactiva de FastAPI está disponible en:
-
-http://127.0.0.1:8000/docs
-
-Desde Swagger UI se realizaron las pruebas de consulta, creación,
-actualización, eliminación y validación de errores.
-
-Códigos HTTP
-
-200 OK: operación realizada correctamente.
-
-404 Not Found: producto no encontrado.
-
-422 Unprocessable Entity: datos que no cumplen las validaciones.
-
-Evidencias
-
-Las evidencias del proyecto incluyen capturas de:
-
-GET /productos exitoso.
-
-POST /productos exitoso.
-
-GET /productos/{id} exitoso.
-
-PUT /productos/{id} exitoso.
-
-DELETE /productos/{id} exitoso.
-
-Producto inexistente con respuesta 404.
-
-Datos inválidos con respuesta 422.
-
-GET /metricas.
-
-Logs de la aplicación.
+bash
+   pip install -r requirements.txt
+Ejecutar la API:
+bash
+   uvicorn main:app --reload
+Acceder a la documentación interactiva (Swagger UI):
+   http://127.0.0.1:8000/docs 
 
 Uso de Inteligencia Artificial
 
