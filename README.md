@@ -123,3 +123,11 @@ validaciones, manejo de errores, documentación automática y
 observabilidad básica. Las pruebas realizadas permitieron comprobar el
 funcionamiento de las operaciones principales y sus diferentes
 escenarios.
+
+
+
+
+Videos Explicativos.
+https://youtu.be/fQJYNGmju7s Gabriel Nieves Bello.
+https://youtu.be/2FzFKrANs_g Zharick Yojana Puentes Rodriguez
+https://youtu.be/VUKcd5KgG9I
