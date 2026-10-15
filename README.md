@@ -1,133 +1,122 @@
-- API de Gestión de Productos
+# SITRAL API — Sistema de Trazabilidad y Control por Lotes para Droguerías
 
-API REST desarrollada con FastAPI para la administración de productos, implementada como parte del taller de Programación (Guía 4 – Observabilidad y DevOps inteligente con IA). 
-Incluye operaciones CRUD completas, validaciones con Pydantic, y un sistema de observabilidad basado en logs y métricas.
+Backend REST en **Python 3.12 + FastAPI + SQLAlchemy 2.0 + MySQL 8** que soporta la aplicación móvil
+multiplataforma (Android / iOS) de SITRAL. Guía de Laboratorio 5 (UD5, Sesiones 9 y 10) — Taller de Programación,
+Universidad Manuela Beltrán.
 
-- Tecnologías utilizadas
-Python 3.13
-FastAPI – framework para la construcción de la API.
-Uvicorn – servidor ASGI que ejecuta la aplicación.
-Pydantic – validación de datos y definición de esquemas.
-Swagger UI / OpenAPI – documentación interactiva generada automáticamente por FastAPI.
-logging (Python) – registro de eventos, errores y operaciones.
-Estructura del proyecto.
+**Integrantes:** Cristian Camilo Girata Ravelo · Gabriel Leonardo Nieves Bello · Zharick Yojana Puentes Rodríguez
+**Tutor:** Juan José Osorio Tabares
 
-├── main.py              # Código principal de la API
+---
 
+## 1. Ejecución local
 
-├── requirements.txt     # Dependencias del proyecto
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate   ·   Linux/macOS: source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env                 # ajuste DATABASE_URL y JWT_SECRET_KEY
+docker compose up -d                 # (opcional) MySQL 8 local
+python -m scripts.crear_admin --usuario admin --nombre Ana --apellido Rojas
+uvicorn app.main:app --reload
+```
 
+* Swagger UI: <http://127.0.0.1:8000/docs> · ReDoc: `/redoc` · OpenAPI 3: `/openapi.json`
+* Pruebas: `pytest -v` (usan SQLite en memoria, no requieren MySQL; el pipeline de GitHub Actions las ejecuta).
 
-├── app.log              # Archivo de logs generado en tiempo de ejecución
+## 2. Estructura
 
-└── README.md
+```
+app/
+├── main.py              # FastAPI, metadatos OpenAPI (inglés), CORS, tarea diaria de alertas
+├── core/                # config (.env), database, security (Argon2id + JWT), deps (roles), errors
+├── domain/              # reglas puras sin BD: enums, vencimiento (regla 10 días), escaneo (EAN/GS1/QR)
+├── models/              # 10 tablas del esquema relacional Fase 1 (SQLAlchemy 2.0)
+├── schemas/             # Pydantic v2 con descripciones y ejemplos en inglés
+├── services/            # generación idempotente de alertas, conversión de lotes, datos base
+└── routers/             # auth, medicamentos, proveedores, lotes, alertas, ai
+tests/                   # 60+ casos: integración (TestClient) + unitarias de dominio
+scripts/crear_admin.py   # primer Administrador
+```
 
-- Funcionalidades principales
-Método	Endpoint	Descripción
-GET	/	Verifica que la API esté funcionando
+## 3. Regla de vencimiento (RQF008) — decisión de diseño
 
-GET	/productos	Consulta todos los productos
+La propuesta Fase 1 fijó una **línea base de 30 días** (entrevista, Tabla 1 P4) y el brief del proyecto exige
+alertar **como máximo 10 días antes** del vencimiento. SITRAL aplica ambas con dos umbrales:
 
-GET	/productos/{id}	Consulta un producto por ID
+| Nivel        | Condición                          | Editable                     | Efecto                                   |
+|--------------|------------------------------------|------------------------------|------------------------------------------|
+| `VENCIDO`    | días < 0                           | —                            | No apto para venta; se sugiere baja       |
+| `CRITICA`    | 0 ≤ días ≤ **10**                  | **No** (constante de código) | Alerta inmediata; priorizar venta (FEFO) |
+| `PREVENTIVA` | 10 < días ≤ `dias_anticipacion`    | Sí, Administrador (10–180)   | Alerta temprana; línea base 30 días      |
+| —            | días > `dias_anticipacion`         | —                            | Lote `VIGENTE`                           |
 
-POST	/productos	Registra un nuevo producto
+Un Administrador no puede fijar el umbral por debajo de 10 (respuesta **422**), por lo que la ventana crítica
+de 10 días siempre se cumple. Los días se calculan con la fecha de **America/Bogota**, no la del servidor.
 
-PUT	/productos/{id}	Actualiza un producto existente
+## 4. Endpoints (prefijo `/api/v1`)
 
-DELETE	/productos/{id}	Elimina un producto
+| Método | Ruta                               | Rol            | Descripción                                        |
+|--------|------------------------------------|----------------|----------------------------------------------------|
+| POST   | `/auth/login`                      | Público        | Login (OAuth2 password) → JWT                      |
+| GET    | `/auth/me`                         | Autenticado    | Perfil del usuario del token                        |
+| POST/GET | `/usuarios`                      | Admin          | Crear / listar usuarios                             |
+| GET/POST | `/medicamentos`                  | Admin, Farm.   | Listar / crear medicamento                          |
+| GET    | `/medicamentos/{id}`               | Admin, Farm.   | Consultar medicamento                               |
+| PUT    | `/medicamentos/{id}`               | Admin          | Actualización parcial                               |
+| DELETE | `/medicamentos/{id}`               | Admin          | Borrado lógico (INACTIVO)                           |
+| *(ídem)* | `/proveedores[/{id}]`            | Admin, Farm.   | CRUD de proveedores (PUT/DELETE solo Admin)         |
+| POST   | `/lotes/escanear`                  | Admin, Farm.   | Decodifica EAN/GTIN, GS1 (DataMatrix/QR) o QR SITRAL |
+| POST   | `/lotes`                           | Admin, Farm.   | Registra lote + movimiento ENTRADA + alerta si aplica |
+| GET    | `/lotes`                           | Admin, Farm.   | Inventario por lote en orden FEFO, filtros          |
+| GET    | `/lotes/{id}`                      | Admin, Farm.   | Consultar lote                                      |
+| GET    | `/lotes/{id}/validacion`           | Admin, Farm.   | **Validación a 10 días**                            |
+| GET    | `/lotes/{id}/trazabilidad`         | Admin, Farm.   | Historial completo del lote (RQF012)                |
+| PATCH  | `/lotes/{id}`                      | Admin          | Corrección auditada (movimiento AJUSTE)             |
+| DELETE | `/lotes/{id}`                      | Admin          | Baja lógica (movimiento BAJA → KPI de pérdidas)     |
+| POST   | `/alertas/generar`                 | Admin, Farm.   | Evaluación idempotente de vencimientos              |
+| GET    | `/alertas`                         | Admin, Farm.   | Alertas por urgencia                                |
+| PATCH  | `/alertas/{id}/atender`            | Admin, Farm.   | Marcar alerta como ATENDIDA                         |
+| GET/PUT | `/alertas/configuracion`          | GET ambos / PUT Admin | Umbral preventivo (10–180)                   |
 
-GET	/metricas	Consulta las métricas de la API
+Códigos HTTP: 200, 201, 400 (regla de negocio), 401 (sin token / token inválido), 403 (rol), 404, 409 (duplicado),
+422 (validación). Todos los errores comparten el cuerpo `ErrorResponse`.
 
+## 5. Asistente IA (Gemini + RAG) — `/api/v1/ai`
 
-Modelo de datos: Producto
-Campo	Tipo	Validación
-1. nombre	string	mínimo 2 caracteres
+| Método | Ruta | Descripción |
+|---|---|---|
+| POST | `/ai/consultas` | Pregunta en lenguaje natural; `tecnica`: `zero_shot`, `few_shot` o `cot` |
+| POST | `/ai/comparar` | Misma pregunta con las 3 técnicas (3 llamadas) |
+| GET | `/ai/contexto` | Muestra los documentos que recupera el RAG (no llama al LLM, costo 0) |
 
-2. categoria	string	mínimo 2 caracteres
+* **RAG básico:** cada lote con existencias se vuelve un documento; BM25 + refuerzo por urgencia recupera los
+  `top_k` más relevantes y se insertan como CONTEXTO en el prompt (Retrieve → Augment → Generate).
+* **Errores:** 429 (cuota de Gemini o límite propio de 10 consultas/min por usuario, con `Retry-After`),
+  503 (sin API key, clave inválida o modelo no disponible), 504 (timeout de 30 s), 502 (respuesta vacía).
+  Reintentos automáticos con espera exponencial para 429/5xx/timeout.
+* **Bitácora:** cada llamada queda en `logs/llamadas_ia.jsonl` (tokens, latencia, costo, respuesta).
+* **Costos:** Gemini 3.8 Flash, USD 0,75 / 1M tokens de entrada y USD 3,75 / 1M de salida (incluye *thinking*)
+  hasta el 31-12-2026; el doble desde 2027. Plan gratuito de AI Studio: USD 0 dentro de la cuota.
 
-3.precio	float	mayor que 0
+### Experimento de prompting (≥ 10 llamadas reales)
+```bash
+python -m scripts.sembrar_datos_demo                 # ~100 medicamentos y ~175 lotes ficticios
+uvicorn app.main:app                                 # terminal 1
+python -m scripts.experimento_prompting --usuario admin   # terminal 2 (12 llamadas, ~2 min)
+```
+Genera `resultados/experimento_<fecha>.json` (evidencia) y `.md` (tablas comparativas y proyección de costos
+en inglés para 4 usuarios × 20 consultas/día).
 
-4. stock	int	mayor o igual a 0
+## 6. Cambios respecto a la Fase 1
 
+* Credenciales movidas a `.env` (pendiente de la sección 10.12).
+* Columna nueva `medicamento.registro_sanitario` (registro INVIMA) para la trazabilidad exigida por la Secretaría de Salud.
+* Estado de lote `BAJA` y estado de alerta `ESCALADA`.
+* Restricción única (`id_medicamento`, `numero_lote`) e índice por `fecha_vencimiento`.
 
-- Observabilidad
+## 7. Próximas iteraciones
 
-La API implementa un middleware que registra automáticamente el inicio, fin, éxito y error de cada petición HTTP, junto con el tiempo de respuesta. 
-Los eventos se guardan tanto en consola como en el archivo app.log, con el siguiente formato:
-
-2026-09-13 10:15:32 | INFO | INICIO PETICIÓN | GET /productos | Petición recibida
-
-2026-09-13 10:15:32 | INFO | ÉXITO PETICIÓN | GET /productos | Operación exitosa | HTTP 200
-
-El endpoint /metricas expone en tiempo real:
-
-Total de peticiones recibidas.
-
-Peticiones exitosas y fallidas.
-
-Tiempo promedio de respuesta.
-
-Número de productos registrados.    
-
-Peticiones por método HTTP (GET, POST, PUT, DELETE)
-
-- Instalación y ejecución
-
-Clonar el repositorio:
-
-bash
-
-   git clone https://github.com/Gabriel-Nieves-source/TALLER_PROGRAMACION_A10.git
-   cd TALLER_PROGRAMACION_A10
-
-Crear y activar el entorno virtual:
-bash
-
-   python -m venv .venv
-   .venv\Scripts\Activate.ps1      # Windows (PowerShell)
-   source .venv/bin/activate       # Linux / macOS
-
-Instalar las dependencias:
-bash
-   
-   pip install -r requirements.txt
-
-Ejecutar la API:
-bash
-   uvicorn main:app --reload
-
-Acceder a la documentación interactiva (Swagger UI):
-   http://127.0.0.1:8000/docs 
-
-
-
-- Uso de Inteligencia Artificial
-
-La Inteligencia Artificial fue utilizada como herramienta de apoyo y
-orientación durante el desarrollo. Se utilizó para comprender la
-estructura del código, resolver dudas, proponer mejoras y explicar
-errores.
-
-Las sugerencias fueron revisadas y adaptadas al proyecto. También se
-realizaron pruebas en Swagger para comprobar el funcionamiento de los
-endpoints, las validaciones, los errores, los logs y las métricas.
-
-La IA no sustituyó las pruebas ni las decisiones realizadas durante el
-desarrollo.
-
-Conclusión
-
-El proyecto permitió desarrollar una API REST funcional utilizando
-Python y FastAPI. Se aplicaron métodos HTTP, estructuras de datos,
-validaciones, manejo de errores, documentación automática y
-observabilidad básica. Las pruebas realizadas permitieron comprobar el
-funcionamiento de las operaciones principales y sus diferentes
-escenarios.
-
-
-
-
-Videos Explicativos.
-https://youtu.be/fQJYNGmju7s Gabriel Nieves Bello.
-https://youtu.be/2FzFKrANs_g Zharick Yojana Puentes Rodriguez
-https://youtu.be/VUKcd5KgG9I
+1. Facturación de entrada/salida (RQF006/RQF007) con descuento FEFO y bloqueo de lotes vencidos.
+2. Dashboard de KPIs (RQF010).
+3. Migración CSV/Excel desde Navasoft (RQF011).
